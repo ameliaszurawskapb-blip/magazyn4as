@@ -5,6 +5,23 @@ from supabase import create_client
 import streamlit.components.v1 as components
 import base64
 
+def sidebar_image_fixed_height(path: str, height_px: int = 260):
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode("utf-8")
+    # wykrycie typu po rozszerzeniu
+    ext = path.split(".")[-1].lower()
+    mime = "png" if ext == "png" else "jpeg" if ext in ["jpg", "jpeg"] else ext
+
+    st.sidebar.markdown(
+        f"""
+        <div style="width:100%; height:{height_px}px; display:flex; align-items:center; justify-content:center;">
+          <img src="data:image/{mime};base64,{data}"
+               style="max-width:100%; max-height:100%; object-fit:contain;" />
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # --- KONFIGURACJA SUPABASE ---
 @st.cache_resource
 def get_supabase():
