@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from supabase import create_client
-
+import streamlit.components.v1 as components
 
 # --- KONFIGURACJA SUPABASE ---
 @st.cache_resource
@@ -77,8 +77,19 @@ limit_niskiego_stanu = st.sidebar.number_input("Próg niskiego stanu", value=5, 
 menu = ["🏠 Dashboard", "📋 Podgląd Danych", "➕ Dodaj Kategorię", "➕ Dodaj Produkt", "🗑️ Usuń Element"]
 choice = st.sidebar.selectbox("Menu", menu)
 
+# --- TRYB ŚWIĄTECZNY (SIDEBAR) ---
+if "tryb_swiateczny" not in st.session_state:
+    st.session_state.tryb_swiateczny = False
+
 st.sidebar.markdown("---")
-st.sidebar.image("logo.png", use_container_width=True)
+st.session_state.tryb_swiateczny = st.sidebar.checkbox(
+    "🎄 Tryb świąteczny",
+    value=st.session_state.tryb_swiateczny
+)
+
+# Obrazek pod Dashboard
+img_path = "obrazek2.png" if st.session_state.tryb_swiateczny else "obrazek1.png"
+st.sidebar.image(img_path, use_container_width=True)
 
 # Dane do DF
 df = pd.DataFrame(fetch_produkty_join())
@@ -86,7 +97,7 @@ df = pd.DataFrame(fetch_produkty_join())
 # --- 1. DASHBOARD ---
 if choice == "🏠 Dashboard":
     st.title("📊 Analityka Magazynowa")
-
+    
     col1, col2, col3 = st.columns(3)
     if df.empty:
         total_value = 0.0
