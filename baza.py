@@ -72,11 +72,13 @@ st.set_page_config(page_title="Magazyn Pro", layout="wide")
 
 st.sidebar.title("⚙️ Ustawienia")
 limit_niskiego_stanu = st.sidebar.number_input("Próg niskiego stanu", value=5, min_value=0)
-st.sidebar.markdown("---")
-st.sidebar.image("logo.png", use_container_width=True)
+
 
 menu = ["🏠 Dashboard", "📋 Podgląd Danych", "➕ Dodaj Kategorię", "➕ Dodaj Produkt", "🗑️ Usuń Element"]
 choice = st.sidebar.selectbox("Menu", menu)
+
+st.sidebar.markdown("---")
+st.sidebar.image("logo.png", use_container_width=True)
 
 # Dane do DF
 df = pd.DataFrame(fetch_produkty_join())
