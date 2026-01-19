@@ -4,6 +4,8 @@ import plotly.express as px
 from supabase import create_client
 import streamlit.components.v1 as components
 import base64
+import os
+
 
 def sidebar_image_fixed_height(path: str, height_px: int = 260):
     with open(path, "rb") as f:
@@ -20,6 +22,23 @@ def sidebar_image_fixed_height(path: str, height_px: int = 260):
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+def snow_overlay_gif(path: str):
+    # path względny do pliku .py (działa na Streamlit Cloud)
+    base_dir = os.path.dirname(__file__)
+    full_path = os.path.join(base_dir, path)
+
+    with open(full_path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    components.html(
+        f"""
+        <img src="data:image/gif;base64,{b64}"
+             style="position:fixed; inset:0; width:100vw; height:100vh;
+                    pointer-events:none; z-index:999999; object-fit:cover;" />
+        """,
+        height=1,
     )
 
 # --- KONFIGURACJA SUPABASE ---
@@ -114,13 +133,7 @@ df = pd.DataFrame(fetch_produkty_join())
 
 # --- ŚNIEG NA CAŁEJ STRONIE ---
 if st.session_state.get("tryb_swiateczny", False):
-    components.html(
-        """
-        <img src="snieg.gif"
-             style="position:fixed; inset:0; width:100vw; height:100vh;
-                    pointer-events:none; z-index:999999; object-fit:cover;" />
-        """,
-        height=1,
+    snow_overlay_gif("snieg.gif"),
     )
 # --- 1. DASHBOARD ---
 if choice == "🏠 Dashboard":
