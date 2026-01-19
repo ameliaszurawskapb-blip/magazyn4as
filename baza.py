@@ -87,6 +87,13 @@ def refresh():
     st.cache_data.clear()
     st.rerun()
 
+def update_produkt(prod_id, nazwa, liczba, cena, kategoria_id):
+    supabase.table("produkty").update({
+        "nazwa": nazwa,
+        "liczba": int(liczba),
+        "cena": float(cena),
+        "kategoria_id": int(kategoria_id) if kategoria_id is not None else None
+    }).eq("id", int(prod_id)).execute()
 
 # --- INTERFEJS ---
 st.set_page_config(page_title="Magazyn Pro", layout="wide")
@@ -95,7 +102,7 @@ st.sidebar.title("⚙️ Ustawienia")
 limit_niskiego_stanu = st.sidebar.number_input("Próg niskiego stanu", value=5, min_value=0)
 
 
-menu = ["🏠 Dashboard", "📋 Podgląd Danych", "➕ Dodaj Kategorię", "➕ Dodaj Produkt", "🗑️ Usuń Element"]
+menu = ["🏠 Dashboard", "📋 Podgląd Danych", "✏️ Edytuj produkt", "➕ Dodaj Kategorię", "➕ Dodaj Produkt", "🗑️ Usuń Element"]
 choice = st.sidebar.selectbox("Menu", menu)
 
 # --- TRYB ŚWIĄTECZNY (SIDEBAR) ---
@@ -169,6 +176,59 @@ elif choice == "📋 Podgląd Danych":
     st.header("Lista produktów")
     st.dataframe(df, use_container_width=True)
 
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "⬇️ Pobierz CSV",
+        data=csv,
+        file_name="produkty.csv",
+        mime="text/csv"
+    )
+# --- dodatkowo edytuj produkt
+elif choice == "✏️ Edytuj produkt":
+    st.header("✏️ Edytuj produkt")
+
+    prods = supabase.table("produkty").select("id,nazwa,liczba,cena,kategoria_id").order("id").execute().data or []
+    if not prods:
+        st.info("Brak produktów do edycji.")
+    else:
+        # wybór produktu
+        prod_labels = {f'{p["id"]} — {p["nazwa"]}': p for p in prods}
+        selected_label = st.selectbox("Wybierz produkt", list(prod_labels.keys()))
+        p = prod_labels[selected_label]
+
+        # kategorie do wyboru
+        kategorie = fetch_kategorie()
+        kat_options = {k["nazwa"]: k["id"] for k in kategorie} if kategorie else {}
+        kat_names = list(kat_options.keys()) if kat_options else ["(brak kategorii)"]
+
+        # ustaw domyślną kategorię w selectbox
+        default_kat_name = None
+        if kat_options and p.get("kategoria_id") is not None:
+            for name, kid in kat_options.items():
+                if kid == p.get("kategoria_id"):
+                    default_kat_name = name
+                    break
+        if default_kat_name in kat_names:
+            default_index = kat_names.index(default_kat_name)
+        else:
+            default_index = 0
+
+        with st.form("edit_prod_form"):
+            nazwa = st.text_input("Nazwa produktu", value=p.get("nazwa") or "")
+            liczba = st.number_input("Liczba (szt.)", min_value=0, step=1, value=int(p.get("liczba") or 0))
+            cena = st.number_input("Cena", min_value=0.0, format="%.2f", value=float(p.get("cena") or 0.0))
+
+            kat_name = st.selectbox("Kategoria", kat_names, index=default_index)
+            submit = st.form_submit_button("Zapisz zmiany")
+
+        if submit:
+            if not nazwa.strip():
+                st.warning("Podaj nazwę produktu.")
+            else:
+                new_kat_id = kat_options.get(kat_name) if kat_options else None
+                update_produkt(p["id"], nazwa.strip(), liczba, cena, new_kat_id)
+                st.success("Zapisano zmiany.")
+                refresh()
 
 # --- 3. DODAJ KATEGORIĘ ---
 elif choice == "➕ Dodaj Kategorię":
@@ -248,3 +308,4 @@ elif choice == "🗑️ Usuń Element":
                 except Exception as e:
                     st.error("Nie udało się usunąć kategorii. Jeśli są produkty przypisane do tej kategorii, usuń je najpierw.")
                     st.caption(str(e))
+
