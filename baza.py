@@ -25,7 +25,6 @@ def sidebar_image_fixed_height(path: str, height_px: int = 260):
     )
 
 def snow_overlay_gif(path: str):
-    # path względny do pliku .py (działa na Streamlit Cloud)
     base_dir = os.path.dirname(__file__)
     full_path = os.path.join(base_dir, path)
 
@@ -34,9 +33,40 @@ def snow_overlay_gif(path: str):
 
     components.html(
         f"""
-        <img src="data:image/gif;base64,{b64}"
-             style="position:fixed; inset:0; width:100vw; height:100vh;
-                    pointer-events:none; z-index:999999; object-fit:cover;" />
+        <style>
+          /* Pełnoekranowy overlay ponad całą stroną */
+          #snowWrap {{
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 999999;
+          }}
+          #snowImg {{
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.95;             /* zwiększ widoczność */
+            filter: contrast(1.2) brightness(1.3);  /* jeszcze bardziej widoczne płatki */
+          }}
+        </style>
+
+        <div id="snowWrap">
+          <img id="snowImg" src="data:image/gif;base64,{b64}" />
+        </div>
+
+        <script>
+          // Dopasuj overlay do okna (na wypadek gdyby iframe/viewport mieszał)
+          function fitSnow() {{
+            const wrap = document.getElementById("snowWrap");
+            if (!wrap) return;
+            wrap.style.width = window.innerWidth + "px";
+            wrap.style.height = window.innerHeight + "px";
+          }}
+          window.addEventListener("resize", fitSnow);
+          fitSnow();
+        </script>
         """,
         height=1,
     )
@@ -133,7 +163,7 @@ df = pd.DataFrame(fetch_produkty_join())
 
 # --- ŚNIEG NA CAŁEJ STRONIE ---
 if st.session_state.get("tryb_swiateczny", False):
-    snow_overlay_gif("snieg.gif"),
+    snow_overlay_gif("snieg.gif") 
 
 # --- 1. DASHBOARD ---
 if choice == "🏠 Dashboard":
