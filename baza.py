@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from supabase import create_client
 import streamlit.components.v1 as components
+import base64
 
 # --- KONFIGURACJA SUPABASE ---
 @st.cache_resource
@@ -88,8 +89,8 @@ st.session_state.tryb_swiateczny = st.sidebar.checkbox(
 )
 
 # Obrazek pod Dashboard
-img_path = "obrazek2.png" if st.session_state.tryb_swiateczny else "obrazek1.png"
-st.sidebar.image(img_path, use_container_width=True)
+img_path = "assets/obrazek2.png" if st.session_state.tryb_swiateczny else "assets/obrazek1.png"
+sidebar_image_fixed_height(img_path, height_px=260)
 
 # Dane do DF
 df = pd.DataFrame(fetch_produkty_join())
@@ -98,56 +99,12 @@ df = pd.DataFrame(fetch_produkty_join())
 if st.session_state.get("tryb_swiateczny", False):
     components.html(
         """
-        <canvas id="snow" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:999999;"></canvas>
-        <script>
-        const canvas = document.getElementById('snow');
-        const ctx = canvas.getContext('2d');
-
-        function resize() {
-          canvas.width = window.innerWidth;
-          canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
-
-        const flakes = Array.from({length: 140}, () => ({
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-          r: 1 + Math.random() * 3,
-          s: 0.6 + Math.random() * 1.8,
-          w: Math.random() * Math.PI * 2
-        }));
-
-        function draw() {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.beginPath();
-
-          for (const f of flakes) {
-            f.y += f.s;
-            f.x += Math.sin(f.w) * 0.7;
-            f.w += 0.01;
-
-            if (f.y > canvas.height + 10) {
-              f.y = -10;
-              f.x = Math.random() * canvas.width;
-            }
-
-            ctx.moveTo(f.x, f.y);
-            ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
-          }
-
-          ctx.fillStyle = "rgba(255,255,255,0.85)";
-          ctx.fill();
-          requestAnimationFrame(draw);
-        }
-
-        draw();
-        </script>
+        <img src="snieg.gif"
+             style="position:fixed; inset:0; width:100vw; height:100vh;
+                    pointer-events:none; z-index:999999; object-fit:cover;" />
         """,
-        height=0,
-        width=0,
+        height=1,
     )
-
 # --- 1. DASHBOARD ---
 if choice == "🏠 Dashboard":
     st.title("📊 Analityka Magazynowa")
