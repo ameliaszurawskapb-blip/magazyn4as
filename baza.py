@@ -7,8 +7,8 @@ from supabase import create_client
 # --- KONFIGURACJA SUPABASE ---
 @st.cache_resource
 def get_supabase():
-    url = st.secrets["https://glvsydbvrxmjjnivpanj.supabase.co"]
-    key = st.secrets["sb_publishable_XggDThHG_IYQObvAu8IyqA_dulLjrpa"]
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
 supabase = get_supabase()
