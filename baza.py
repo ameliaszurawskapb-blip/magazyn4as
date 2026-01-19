@@ -106,7 +106,7 @@ st.session_state.tryb_swiateczny = st.sidebar.checkbox(
 )
 
 # Obrazek pod Dashboard
-img_path = "assets/obrazek2.png" if st.session_state.tryb_swiateczny else "assets/obrazek1.png"
+img_path = "obrazek2.png" if st.session_state.tryb_swiateczny else "obrazek1.png"
 sidebar_image_fixed_height(img_path, height_px=260)
 
 # Dane do DF
