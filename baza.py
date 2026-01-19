@@ -134,7 +134,7 @@ df = pd.DataFrame(fetch_produkty_join())
 # --- ŚNIEG NA CAŁEJ STRONIE ---
 if st.session_state.get("tryb_swiateczny", False):
     snow_overlay_gif("snieg.gif"),
-    )
+
 # --- 1. DASHBOARD ---
 if choice == "🏠 Dashboard":
     st.title("📊 Analityka Magazynowa")
