@@ -1,136 +1,213 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import plotly.express as px
+from supabase import create_client
 
-# --- KONFIGURACJA BAZY DANYCH ---
-def init_db():
-    conn = sqlite3.connect('magazyn.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS kategorie 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, nazwa TEXT NOT NULL, opis TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS produkty 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, nazwa TEXT NOT NULL, 
-                  liczba INTEGER DEFAULT 0, cena REAL DEFAULT 0.0, kategoria_id INTEGER, 
-                  FOREIGN KEY(kategoria_id) REFERENCES kategorie(id))''')
-    conn.commit()
-    return conn
 
-conn = init_db()
-cursor = conn.cursor()
+# --- KONFIGURACJA SUPABASE ---
+@st.cache_resource
+def get_supabase():
+    url = st.secrets["https://glvsydbvrxmjjnivpanj.supabase.co"]
+    key = st.secrets["sb_publishable_XggDThHG_IYQObvAu8IyqA_dulLjrpa"]
+    return create_client(url, key)
+
+supabase = get_supabase()
+
+
+# --- FUNKCJE DB (SUPABASE) ---
+@st.cache_data(ttl=10)
+def fetch_kategorie():
+    resp = supabase.table("kategorie").select("id,nazwa,opis").order("id").execute()
+    return resp.data or []
+
+@st.cache_data(ttl=10)
+def fetch_produkty_join():
+    # Pobieramy produkty + nazwę kategorii (osobno), bo join w REST bywa różnie ustawiony.
+    prods = supabase.table("produkty").select("id,nazwa,liczba,cena,kategoria_id").order("id").execute().data or []
+    kats = fetch_kategorie()
+
+    kat_map = {k["id"]: k.get("nazwa") for k in kats}
+
+    rows = []
+    for p in prods:
+        liczba = p.get("liczba") or 0
+        cena = p.get("cena") or 0.0
+        rows.append({
+            "id": p.get("id"),
+            "nazwa": p.get("nazwa"),
+            "liczba": liczba,
+            "cena": cena,
+            "kategoria": kat_map.get(p.get("kategoria_id")),
+            "wartosc": float(liczba) * float(cena),
+        })
+
+    return rows
+
+def add_kategoria(nazwa, opis):
+    supabase.table("kategorie").insert({"nazwa": nazwa, "opis": opis}).execute()
+
+def add_produkt(nazwa, liczba, cena, kategoria_id):
+    supabase.table("produkty").insert({
+        "nazwa": nazwa,
+        "liczba": int(liczba),
+        "cena": float(cena),
+        "kategoria_id": int(kategoria_id) if kategoria_id is not None else None
+    }).execute()
+
+def delete_produkt(prod_id):
+    supabase.table("produkty").delete().eq("id", int(prod_id)).execute()
+
+def delete_kategoria(kat_id):
+    # Uwaga: jeśli masz produkty przypisane do kategorii, delete może się nie udać
+    # (foreign key). Wtedy najpierw usuń produkty lub ustaw kategoria_id = NULL.
+    supabase.table("kategorie").delete().eq("id", int(kat_id)).execute()
+
+def refresh():
+    st.cache_data.clear()
+    st.rerun()
+
 
 # --- INTERFEJS ---
 st.set_page_config(page_title="Magazyn Pro", layout="wide")
 
-# Sidebar - Ustawienia alertów
 st.sidebar.title("⚙️ Ustawienia")
 limit_niskiego_stanu = st.sidebar.number_input("Próg niskiego stanu", value=5, min_value=0)
 
 menu = ["🏠 Dashboard", "📋 Podgląd Danych", "➕ Dodaj Kategorię", "➕ Dodaj Produkt", "🗑️ Usuń Element"]
 choice = st.sidebar.selectbox("Menu", menu)
 
-# Pobieranie danych do DataFrame (potrzebne w wielu miejscach)
-query = '''
-    SELECT p.id, p.nazwa, p.liczba, p.cena, k.nazwa as kategoria, (p.liczba * p.cena) as wartosc
-    FROM produkty p
-    LEFT JOIN kategorie k ON p.kategoria_id = k.id
-'''
-df = pd.read_sql_query(query, conn)
+# Dane do DF
+df = pd.DataFrame(fetch_produkty_join())
 
-# --- 1. DASHBOARD (NOWOŚĆ) ---
+# --- 1. DASHBOARD ---
 if choice == "🏠 Dashboard":
     st.title("📊 Analityka Magazynowa")
-    
-    # Metryki ogólne
+
     col1, col2, col3 = st.columns(3)
-    total_value = df['wartosc'].sum()
-    total_items = df['liczba'].sum()
-    low_stock_count = df[df['liczba'] <= limit_niskiego_stanu].shape[0]
-    
+    if df.empty:
+        total_value = 0.0
+        total_items = 0
+        low_stock_count = 0
+    else:
+        total_value = float(df["wartosc"].sum())
+        total_items = int(df["liczba"].sum())
+        low_stock_count = int(df[df["liczba"] <= limit_niskiego_stanu].shape[0])
+
     col1.metric("Całkowita wartość", f"{total_value:,.2f} zł")
-    col2.metric("Liczba produktów (szt.)", int(total_items))
+    col2.metric("Liczba produktów (szt.)", total_items)
     col3.metric("Niski stan (alerty)", low_stock_count, delta_color="inverse")
 
     st.divider()
 
-    # Wykresy i Alerty
     left_col, right_col = st.columns([2, 1])
 
     with left_col:
         st.subheader("Udział wartości w kategoriach")
-        if not df.empty:
-            fig = px.pie(df, values='wartosc', names='kategoria', hole=0.4,
-                         color_discrete_sequence=px.colors.sequential.RdBu)
+        if not df.empty and df["wartosc"].sum() > 0:
+            # Jeżeli kategoria jest None, zamień na "Brak kategorii"
+            df_plot = df.copy()
+            df_plot["kategoria"] = df_plot["kategoria"].fillna("Brak kategorii")
+
+            fig = px.pie(df_plot, values="wartosc", names="kategoria", hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Brak danych do wyświetlenia wykresu.")
 
     with right_col:
         st.subheader("⚠️ Alerty niskiego stanu")
-        low_stock_df = df[df['liczba'] <= limit_niskiego_stanu][['nazwa', 'liczba']]
+        if not df.empty:
+            low_stock_df = df[df["liczba"] <= limit_niskiego_stanu][["nazwa", "liczba"]]
+        else:
+            low_stock_df = pd.DataFrame(columns=["nazwa", "liczba"])
+
         if not low_stock_df.empty:
             st.error(f"Poniżej progu ({limit_niskiego_stanu} szt.):")
             st.table(low_stock_df)
         else:
             st.success("Wszystkie stany w normie.")
 
+
 # --- 2. PODGLĄD DANYCH ---
 elif choice == "📋 Podgląd Danych":
     st.header("Lista produktów")
     st.dataframe(df, use_container_width=True)
 
-# --- RESZTA FUNKCJI (DODAWANIE/USUWANIE) ---
-# ... (Kod z poprzedniej odpowiedzi dla Dodaj Kategorię / Dodaj Produkt / Usuń Element)
-# [Wstaw tutaj sekcje Dodaj Kategorię, Dodaj Produkt i Usuń z poprzedniego kodu]
 
+# --- 3. DODAJ KATEGORIĘ ---
 elif choice == "➕ Dodaj Kategorię":
     st.header("Dodawanie nowej kategorii")
+
     with st.form("form_kat"):
         nazwa = st.text_input("Nazwa kategorii")
         opis = st.text_area("Opis")
         submit = st.form_submit_button("Zapisz kategorię")
-        if submit and nazwa:
-            cursor.execute("INSERT INTO kategorie (nazwa, opis) VALUES (?, ?)", (nazwa, opis))
-            conn.commit()
-            st.success(f"Dodano kategorię: {nazwa}")
-            st.rerun()
 
+    if submit:
+        if not nazwa.strip():
+            st.warning("Podaj nazwę kategorii.")
+        else:
+            add_kategoria(nazwa.strip(), opis.strip() if opis else None)
+            st.success(f"Dodano kategorię: {nazwa.strip()}")
+            refresh()
+
+
+# --- 4. DODAJ PRODUKT ---
 elif choice == "➕ Dodaj Produkt":
     st.header("Dodawanie nowego produktu")
-    kategorie = cursor.execute("SELECT id, nazwa FROM kategorie").fetchall()
-    kat_options = {k[1]: k[0] for k in kategorie}
-    if not kat_options:
+
+    kategorie = fetch_kategorie()
+    if not kategorie:
         st.warning("Najpierw dodaj kategorię!")
     else:
+        kat_options = {k["nazwa"]: k["id"] for k in kategorie}
+
         with st.form("form_prod"):
             nazwa = st.text_input("Nazwa produktu")
-            liczba = st.number_input("Liczba (szt.)", min_value=0, step=1)
-            cena = st.number_input("Cena", min_value=0.0, format="%.2f")
+            liczba = st.number_input("Liczba (szt.)", min_value=0, step=1, value=0)
+            cena = st.number_input("Cena", min_value=0.0, format="%.2f", value=0.0)
             kat_name = st.selectbox("Kategoria", list(kat_options.keys()))
             submit = st.form_submit_button("Zapisz produkt")
-            if submit and nazwa:
-                cursor.execute("INSERT INTO produkty (nazwa, liczba, cena, kategoria_id) VALUES (?, ?, ?, ?)",
-                               (nazwa, liczba, cena, kat_options[kat_name]))
-                conn.commit()
-                st.success(f"Dodano produkt: {nazwa}")
-                st.rerun()
 
+        if submit:
+            if not nazwa.strip():
+                st.warning("Podaj nazwę produktu.")
+            else:
+                add_produkt(nazwa.strip(), liczba, cena, kat_options[kat_name])
+                st.success(f"Dodano produkt: {nazwa.strip()}")
+                refresh()
+
+
+# --- 5. USUŃ ---
 elif choice == "🗑️ Usuń Element":
     st.header("Usuwanie")
-    # Logika usuwania (identyczna jak w poprzednim kroku)
     st.info("Wybierz odpowiednią zakładkę poniżej")
+
     t1, t2 = st.tabs(["Produkt", "Kategoria"])
+
     with t1:
-        prods = cursor.execute("SELECT id, nazwa FROM produkty").fetchall()
-        p_del = st.selectbox("Wybierz produkt", prods, format_func=lambda x: x[1])
-        if st.button("Usuń produkt"):
-            cursor.execute("DELETE FROM produkty WHERE id=?", (p_del[0],))
-            conn.commit()
-            st.rerun()
+        prods_rows = supabase.table("produkty").select("id,nazwa").order("id").execute().data or []
+        if not prods_rows:
+            st.info("Brak produktów do usunięcia.")
+        else:
+            prod_map = {f'{p["id"]} — {p["nazwa"]}': p["id"] for p in prods_rows}
+            prod_label = st.selectbox("Wybierz produkt", list(prod_map.keys()))
+            if st.button("Usuń produkt", type="primary"):
+                delete_produkt(prod_map[prod_label])
+                st.success("Produkt usunięty.")
+                refresh()
+
     with t2:
-        kats = cursor.execute("SELECT id, nazwa FROM kategorie").fetchall()
-        k_del = st.selectbox("Wybierz kategorię", kats, format_func=lambda x: x[1])
-        if st.button("Usuń kategorię"):
-            cursor.execute("DELETE FROM kategorie WHERE id=?", (k_del[0],))
-            conn.commit()
-            st.rerun()
+        kats_rows = supabase.table("kategorie").select("id,nazwa").order("id").execute().data or []
+        if not kats_rows:
+            st.info("Brak kategorii do usunięcia.")
+        else:
+            kat_map = {f'{k["id"]} — {k["nazwa"]}': k["id"] for k in kats_rows}
+            kat_label = st.selectbox("Wybierz kategorię", list(kat_map.keys()))
+            if st.button("Usuń kategorię", type="primary"):
+                try:
+                    delete_kategoria(kat_map[kat_label])
+                    st.success("Kategoria usunięta.")
+                    refresh()
+                except Exception as e:
+                    st.error("Nie udało się usunąć kategorii. Jeśli są produkty przypisane do tej kategorii, usuń je najpierw.")
+                    st.caption(str(e))
